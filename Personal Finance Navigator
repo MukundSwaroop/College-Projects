@@ -1,0 +1,287 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+#define MAX_TRANSACTIONS 1000
+#define MAX_CATEGORIES 50
+#define MAX_NAME_LENGTH 50
+#define MAX_DESC_LENGTH 100
+#define MAX_NOTIFICATIONS 50
+
+typedef struct {
+    char message[100];
+    time_t timestamp;
+    int is_read;
+} Notification;
+
+typedef struct {
+    char name[MAX_NAME_LENGTH];
+    float budget_limit;
+    float current_spent;
+} Category;
+
+typedef struct {
+    float amount;
+    char description[MAX_DESC_LENGTH];
+    char category[MAX_NAME_LENGTH];
+    time_t timestamp;
+    int is_income;
+} Transaction;
+
+typedef struct {
+    Transaction transactions[MAX_TRANSACTIONS];
+    Category categories[MAX_CATEGORIES];
+    Notification notifications[MAX_NOTIFICATIONS];
+    int transaction_count;
+    int category_count;
+    int notification_count;
+    float total_income;
+    float total_expenses;
+} BudgetTracker;
+
+// Function declarations
+void clear_input_buffer();
+float get_float_input(const char *prompt);
+void get_string_input(char *buffer, int max_length, const char *prompt);
+void print_line();
+void init_tracker(BudgetTracker *tracker);
+void add_income(BudgetTracker *tracker);
+void add_expense(BudgetTracker *tracker);
+void view_transactions(BudgetTracker *tracker);
+void set_budget(BudgetTracker *tracker);
+void add_notification(BudgetTracker *tracker, const char *message);
+void show_notifications(BudgetTracker *tracker);
+void delete_old_notifications(BudgetTracker *tracker);
+void view_summary(BudgetTracker *tracker);
+void main_menu(BudgetTracker *tracker);
+
+// Utility Functions
+void clear_input_buffer() {
+    int c;
+    while ((c = getchar()) != '\n' && c != EOF);
+}
+
+float get_float_input(const char *prompt) {
+    float value;
+    printf("%s", prompt);
+    while (scanf("%f", &value) != 1) {
+        printf("Invalid input. Please enter a valid number: ");
+        clear_input_buffer();
+    }
+    clear_input_buffer();
+    return value;
+}
+
+void get_string_input(char *buffer, int max_length, const char *prompt) {
+    printf("%s", prompt);
+    fgets(buffer, max_length, stdin);
+    buffer[strcspn(buffer, "\n")] = '\0';
+}
+
+void print_line() {
+    printf("--------------------------------------------------\n");
+}
+
+// Tracker Initialization
+void init_tracker(BudgetTracker *tracker) {
+    tracker->transaction_count = 0;
+    tracker->category_count = 0;
+    tracker->notification_count = 0;
+    tracker->total_income = 0;
+    tracker->total_expenses = 0;
+
+    const char *default_categories[] = {
+        "Salary", "Investments", "Food", "Transport", "Rent", "Entertainment", "Utilities"
+    };
+
+    for (int i = 0; i < sizeof(default_categories) / sizeof(default_categories[0]); i++) {
+        strcpy(tracker->categories[i].name, default_categories[i]);
+        tracker->categories[i].budget_limit = 0;
+        tracker->categories[i].current_spent = 0;
+        tracker->category_count++;
+    }
+
+    add_notification(tracker, "Budget Tracker initialized with default categories.");
+}
+
+// Add Income
+void add_income(BudgetTracker *tracker) {
+    if (tracker->transaction_count >= MAX_TRANSACTIONS) {
+        printf("Error: Transaction limit reached.\n");
+        return;
+    }
+
+    Transaction *t = &tracker->transactions[tracker->transaction_count];
+    t->amount = get_float_input("Enter income amount: ");
+    strcpy(t->category, "Income");
+    get_string_input(t->description, MAX_DESC_LENGTH, "Enter description: ");
+    t->timestamp = time(NULL);
+    t->is_income = 1;
+
+    tracker->total_income += t->amount;
+    tracker->transaction_count++;
+    add_notification(tracker, "Income transaction added successfully.");
+    printf("Income added successfully.\n");
+}
+
+// Add Expense
+void add_expense(BudgetTracker *tracker) {
+    if (tracker->transaction_count >= MAX_TRANSACTIONS) {
+        printf("Error: Transaction limit reached.\n");
+        return;
+    }
+
+    printf("Available categories:\n");
+    for (int i = 0; i < tracker->category_count; i++) {
+        printf("%d. %s\n", i + 1, tracker->categories[i].name);
+    }
+
+    int choice;
+    printf("Select a category (1-%d): ", tracker->category_count);
+    scanf("%d", &choice);
+    clear_input_buffer();
+
+    if (choice < 1 || choice > tracker->category_count) {
+        printf("Invalid category. Transaction cancelled.\n");
+        return;
+    }
+
+    Transaction *t = &tracker->transactions[tracker->transaction_count];
+    t->amount = get_float_input("Enter expense amount: ");
+    strcpy(t->category, tracker->categories[choice - 1].name);
+    get_string_input(t->description, MAX_DESC_LENGTH, "Enter description: ");
+    t->timestamp = time(NULL);
+    t->is_income = 0;
+
+    tracker->categories[choice - 1].current_spent += t->amount;
+    tracker->total_expenses += t->amount;
+    tracker->transaction_count++;
+
+    if (tracker->categories[choice - 1].budget_limit > 0 &&
+        tracker->categories[choice - 1].current_spent > tracker->categories[choice - 1].budget_limit) {
+        char warning[100];
+        sprintf(warning, "Budget limit exceeded for category %s!", tracker->categories[choice - 1].name);
+        add_notification(tracker, warning);
+    }
+
+    add_notification(tracker, "Expense transaction added successfully.");
+    printf("Expense added successfully.\n");
+}
+
+// View Transactions
+void view_transactions(BudgetTracker *tracker) {
+    if (tracker->transaction_count == 0) {
+        printf("No transactions recorded yet.\n");
+        return;
+    }
+
+    print_line();
+    printf("Transaction History:\n");
+    print_line();
+    for (int i = 0; i < tracker->transaction_count; i++) {
+        Transaction *t = &tracker->transactions[i];
+        printf("%-10s | $%-8.2f | %-15s | %s\n",
+               t->is_income ? "Income" : "Expense",
+               t->amount,
+               t->category,
+               t->description);
+    }
+    print_line();
+    printf("Total Income: $%.2f\n", tracker->total_income);
+    printf("Total Expenses: $%.2f\n", tracker->total_expenses);
+    printf("Balance: $%.2f\n", tracker->total_income - tracker->total_expenses);
+    print_line();
+}
+
+// Set Budget
+void set_budget(BudgetTracker *tracker) {
+    for (int i = 0; i < tracker->category_count; i++) {
+        printf("Category: %s - Current Budget: $%.2f\n", tracker->categories[i].name, tracker->categories[i].budget_limit);
+        tracker->categories[i].budget_limit = get_float_input("Set new budget: ");
+    }
+    add_notification(tracker, "Budget limits updated successfully.");
+    printf("Budget limits updated successfully.\n");
+}
+
+// Add Notification
+void add_notification(BudgetTracker *tracker, const char *message) {
+    if (tracker->notification_count >= MAX_NOTIFICATIONS) {
+        for (int i = 1; i < MAX_NOTIFICATIONS; i++) {
+            tracker->notifications[i - 1] = tracker->notifications[i];
+        }
+        tracker->notification_count--;
+    }
+
+    Notification *n = &tracker->notifications[tracker->notification_count];
+    strncpy(n->message, message, 99);
+    n->timestamp = time(NULL);
+    n->is_read = 0;
+    tracker->notification_count++;
+}
+
+// Show Notifications
+void show_notifications(BudgetTracker *tracker) {
+    if (tracker->notification_count == 0) {
+        printf("No notifications available.\n");
+        return;
+    }
+
+    print_line();
+    printf("Notifications:\n");
+    print_line();
+    for (int i = 0; i < tracker->notification_count; i++) {
+        printf("%s\n", tracker->notifications[i].message);
+        tracker->notifications[i].is_read = 1;
+    }
+    print_line();
+}
+
+// Main Menu
+void main_menu(BudgetTracker *tracker) {
+    int choice;
+    do {
+        print_line();
+        printf("1. Add Income\n");
+        printf("2. Add Expense\n");
+        printf("3. View Transactions\n");
+        printf("4. Set Budget\n");
+        printf("5. View Notifications\n");
+        printf("6. Exit\n");
+        print_line();
+        printf("Enter your choice: ");
+        scanf("%d", &choice);
+        clear_input_buffer();
+
+        switch (choice) {
+            case 1:
+                add_income(tracker);
+                break;
+            case 2:
+                add_expense(tracker);
+                break;
+            case 3:
+                view_transactions(tracker);
+                break;
+            case 4:
+                set_budget(tracker);
+                break;
+            case 5:
+                show_notifications(tracker);
+                break;
+            case 6:
+                printf("Exiting... Goodbye!\n");
+                break;
+            default:
+                printf("Invalid choice. Please try again.\n");
+        }
+    } while (choice != 6);
+}
+
+// Main Function
+int main() {
+    BudgetTracker tracker;
+    init_tracker(&tracker);
+    main_menu(&tracker);
+    return 0;
+}
